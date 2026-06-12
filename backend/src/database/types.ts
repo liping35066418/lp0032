@@ -38,6 +38,14 @@ export interface Script {
   updated_at: string;
 }
 
+export interface Category {
+  id: number;
+  name: string;
+  status: 'active' | 'inactive';
+  created_at: string;
+  updated_at: string;
+}
+
 export type RoomStatus = 'active' | 'maintenance' | 'inactive';
 
 export interface Room {

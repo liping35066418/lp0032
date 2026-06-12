@@ -60,10 +60,12 @@ router.get('/', (req, res) => {
 
 router.get('/categories', (req, res) => {
   const categories = db.prepare(`
-    SELECT DISTINCT category as name, COUNT(*) as count 
-    FROM scripts 
-    WHERE status = 'published'
-    GROUP BY category
+    SELECT 
+      c.name,
+      (SELECT COUNT(*) FROM scripts s WHERE s.category = c.name AND s.status = 'published') as count
+    FROM categories c
+    WHERE c.status = 'active'
+    ORDER BY c.name
   `).all() as { name: string; count: number }[];
   
   success(res, categories);

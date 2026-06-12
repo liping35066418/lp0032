@@ -1,4 +1,5 @@
 import { request, ApiResponse, PaginatedResponse } from './client';
+import { Category } from '../types';
 
 export type ScriptDifficulty = 'easy' | 'medium' | 'hard' | 'nightmare';
 export type ScriptStatus = 'draft' | 'published' | 'offline';
@@ -28,6 +29,11 @@ export interface ScriptCategory {
   count: number;
 }
 
+export interface CategoryWithCount extends Category {
+  script_count: number;
+  published_count: number;
+}
+
 export interface ScriptListParams {
   page?: number;
   pageSize?: number;
@@ -43,8 +49,26 @@ export const scriptApi = {
   getList: (params?: ScriptListParams): Promise<ApiResponse<PaginatedResponse<Script>>> =>
     request.get<PaginatedResponse<Script>>('/scripts', { params }),
 
-  getCategories: (): Promise<ApiResponse<ScriptCategory[]>> =>
+  getScriptCategories: (): Promise<ApiResponse<ScriptCategory[]>> =>
     request.get<ScriptCategory[]>('/scripts/categories'),
+
+  getCategories: (): Promise<ApiResponse<ScriptCategory[]>> =>
+    request.get<ScriptCategory[]>('/categories/active'),
+
+  getAllCategories: (params?: { status?: string }): Promise<ApiResponse<CategoryWithCount[]>> =>
+    request.get<CategoryWithCount[]>('/categories', { params }),
+
+  createCategory: (data: { name: string }): Promise<ApiResponse<Category>> =>
+    request.post<Category>('/categories', data),
+
+  updateCategory: (id: number, data: { name: string }): Promise<ApiResponse<Category>> =>
+    request.put<Category>(`/categories/${id}`, data),
+
+  updateCategoryStatus: (id: number, status: 'active' | 'inactive'): Promise<ApiResponse<{ status: string }>> =>
+    request.patch<{ status: string }>(`/categories/${id}/status`, { status }),
+
+  deleteCategory: (id: number): Promise<ApiResponse<null>> =>
+    request.delete<null>(`/categories/${id}`),
 
   getDetail: (id: number): Promise<ApiResponse<Script>> =>
     request.get<Script>(`/scripts/${id}`)

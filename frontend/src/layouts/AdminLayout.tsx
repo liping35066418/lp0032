@@ -11,12 +11,14 @@ import {
   SettingOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
-  MenuUnfoldOutlined
+  MenuUnfoldOutlined,
+  FolderOutlined
 } from '@ant-design/icons';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import Dashboard from '../pages/admin/Dashboard';
 import ScriptManagement from '../pages/admin/ScriptManagement';
+import CategoryManagement from '../pages/admin/CategoryManagement';
 import ScheduleManagement from '../pages/admin/ScheduleManagement';
 import RoomManagement from '../pages/admin/RoomManagement';
 import UserManagement from '../pages/admin/UserManagement';
@@ -36,6 +38,7 @@ const AdminLayout: React.FC = () => {
   const menuItems = [
     { key: '/', icon: <DashboardOutlined />, label: '数据概览' },
     { key: '/scripts', icon: <BookOutlined />, label: '剧本管理' },
+    { key: '/categories', icon: <FolderOutlined />, label: '分类管理' },
     { key: '/schedules', icon: <CalendarOutlined />, label: '场次管理' },
     { key: '/rooms', icon: <SettingOutlined />, label: '房间管理' },
     { key: '/users', icon: <TeamOutlined />, label: '用户管理' },
@@ -109,6 +112,7 @@ const AdminLayout: React.FC = () => {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/scripts" element={<ScriptManagement />} />
+            <Route path="/categories" element={<CategoryManagement />} />
             <Route path="/schedules" element={<ScheduleManagement />} />
             <Route path="/rooms" element={<RoomManagement />} />
             <Route path="/users" element={<UserManagement />} />

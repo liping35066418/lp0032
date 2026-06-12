@@ -121,6 +121,22 @@ const seedData = () => {
   
   console.log('剧本数据初始化完成');
   
+  const selectCategories = db.prepare(`
+    SELECT DISTINCT category FROM scripts
+  `);
+  const categories = selectCategories.all() as { category: string }[];
+  
+  const insertCategory = db.prepare(`
+    INSERT OR IGNORE INTO categories (name)
+    VALUES (?)
+  `);
+  
+  for (const cat of categories) {
+    insertCategory.run(cat.category);
+  }
+  
+  console.log('分类数据初始化完成');
+  
   const insertDrink = db.prepare(`
     INSERT OR IGNORE INTO drinks (name, category, price, description, status, stock)
     VALUES (?, ?, ?, ?, ?, ?)

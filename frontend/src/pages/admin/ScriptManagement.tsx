@@ -16,7 +16,7 @@ import {
   Typography,
   Card,
   Image,
-  Checkbox
+  Divider
 } from 'antd';
 import {
   PlusOutlined,
@@ -27,8 +27,9 @@ import {
   DownOutlined,
   ReloadOutlined
 } from '@ant-design/icons';
-import { scriptsApi, Script, ScriptStatus, ScriptDifficulty, PaginatedResponse } from '../../api';
+import { scriptsApi, categoriesApi, Script, ScriptStatus, ScriptDifficulty, PaginatedResponse } from '../../api';
 import { statusMap, difficultyMap } from '../../types';
+import { useCategoryStore } from '../../store/useCategoryStore';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -54,7 +55,7 @@ interface ScriptFormData {
 const ScriptManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [scripts, setScripts] = useState<PaginatedResponse<Script> | null>(null);
-  const [categories, setCategories] = useState<{ name: string; count: number }[]>([]);
+  const { activeCategories, fetchActiveCategories, refreshCategories } = useCategoryStore();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [queryParams, setQueryParams] = useState({
     page: 1,
@@ -65,8 +66,10 @@ const ScriptManagement: React.FC = () => {
     status: '' as ScriptStatus | ''
   });
   const [modalVisible, setModalVisible] = useState(false);
+  const [addCategoryModalVisible, setAddCategoryModalVisible] = useState(false);
   const [editingScript, setEditingScript] = useState<Script | null>(null);
   const [form] = Form.useForm<ScriptFormData>();
+  const [categoryForm] = Form.useForm<{ name: string }>();
 
   const loadData = async () => {
     setLoading(true);
@@ -77,12 +80,11 @@ const ScriptManagement: React.FC = () => {
       if (!params.difficulty) delete params.difficulty;
       if (!params.status) delete params.status;
 
-      const [scriptsRes, categoriesRes] = await Promise.all([
+      const [scriptsRes] = await Promise.all([
         scriptsApi.getList(params),
-        scriptsApi.getCategories()
+        fetchActiveCategories()
       ]);
       setScripts(scriptsRes.data);
-      setCategories(categoriesRes.data);
     } catch (error: any) {
       message.error(error.message || '加载失败');
     } finally {
@@ -157,6 +159,25 @@ const ScriptManagement: React.FC = () => {
     } catch (error: any) {
       if (error.errorFields) return;
       message.error(error.message || '操作失败');
+    }
+  };
+
+  const handleOpenAddCategory = () => {
+    categoryForm.resetFields();
+    setAddCategoryModalVisible(true);
+  };
+
+  const handleAddCategorySubmit = async () => {
+    try {
+      const values = await categoryForm.validateFields();
+      const res = await categoriesApi.createCategory(values);
+      message.success('分类创建成功');
+      setAddCategoryModalVisible(false);
+      form.setFieldsValue({ category: res.data.name });
+      await refreshCategories();
+    } catch (error: any) {
+      if (error.errorFields) return;
+      message.error(error.message || '创建失败');
     }
   };
 
@@ -377,7 +398,7 @@ const ScriptManagement: React.FC = () => {
               value={queryParams.category || undefined}
               onChange={(value) => setQueryParams(prev => ({ ...prev, page: 1, category: value || '' }))}
             >
-              {categories.map(cat => (
+              {activeCategories.map(cat => (
                 <Option key={cat.name} value={cat.name}>{cat.name} ({cat.count})</Option>
               ))}
             </Select>
@@ -497,35 +518,26 @@ const ScriptManagement: React.FC = () => {
                 rules={[{ required: true, message: '请选择分类' }]}
               >
                 <Select
-                  placeholder="请选择或输入分类"
-                  mode={undefined as any}
+                  placeholder="请选择分类"
                   allowClear
                   dropdownRender={(menu) => (
                     <>
                       {menu}
-                      <div style={{ padding: '8px', borderTop: '1px solid #f0f0f0' }}>
-                        <Checkbox onChange={(e) => {
-                          if (e.target.checked) {
-                            const input = document.createElement('input');
-                            input.placeholder = '输入新分类';
-                            input.style.width = '100%';
-                            input.onblur = function() {
-                              if (input.value) {
-                                form.setFieldsValue({ category: input.value });
-                              }
-                            };
-                            e.target.parentElement!.innerHTML = '';
-                            e.target.parentElement!.appendChild(input);
-                            input.focus();
-                          }
-                        }}>
-                          添加新分类
-                        </Checkbox>
+                      <Divider style={{ margin: '4px 0' }} />
+                      <div style={{ padding: '4px 8px' }}>
+                        <Button
+                          type="link"
+                          icon={<PlusOutlined />}
+                          block
+                          onClick={handleOpenAddCategory}
+                        >
+                          新增分类
+                        </Button>
                       </div>
                     </>
                   )}
                 >
-                  {categories.map(cat => (
+                  {activeCategories.map(cat => (
                     <Option key={cat.name} value={cat.name}>{cat.name}</Option>
                   ))}
                 </Select>
@@ -651,6 +663,25 @@ const ScriptManagement: React.FC = () => {
               <Option value="published">已上架</Option>
               <Option value="offline">已下架</Option>
             </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="新增分类"
+        open={addCategoryModalVisible}
+        onOk={handleAddCategorySubmit}
+        onCancel={() => setAddCategoryModalVisible(false)}
+        width={400}
+        destroyOnClose
+      >
+        <Form form={categoryForm} layout="vertical">
+          <Form.Item
+            name="name"
+            label="分类名称"
+            rules={[{ required: true, message: '请输入分类名称' }]}
+          >
+            <Input placeholder="请输入分类名称" maxLength={50} showCount />
           </Form.Item>
         </Form>
       </Modal>

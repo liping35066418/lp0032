@@ -32,7 +32,8 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { scheduleApi, ScheduleWithDetails, BookingWithPlayer } from '../../api/schedules';
-import { scriptApi, ScriptCategory } from '../../api/scripts';
+import { ScriptCategory } from '../../api/scripts';
+import { useCategoryStore } from '../../store/useCategoryStore';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -44,7 +45,7 @@ const ScheduleList: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [schedules, setSchedules] = useState<ScheduleWithDetails[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
-  const [categories, setCategories] = useState<ScriptCategory[]>([]);
+  const { activeCategories: categories, fetchActiveCategories } = useCategoryStore();
   const [categoryFilter, setCategoryFilter] = useState<string>();
   const [difficultyFilter, setDifficultyFilter] = useState<string>();
   const [dateFilter, setDateFilter] = useState<string>();
@@ -65,21 +66,12 @@ const ScheduleList: React.FC = () => {
   }, [location.state]);
 
   useEffect(() => {
-    fetchCategories();
+    fetchActiveCategories();
   }, []);
 
   useEffect(() => {
     fetchSchedules();
   }, [pagination.current, pagination.pageSize, categoryFilter, difficultyFilter, dateFilter, scriptIdFilter]);
-
-  const fetchCategories = async () => {
-    try {
-      const response = await scriptApi.getCategories();
-      setCategories(response.data);
-    } catch (error: any) {
-      message.error(error.message || '获取分类失败');
-    }
-  };
 
   const fetchSchedules = async () => {
     setLoading(true);

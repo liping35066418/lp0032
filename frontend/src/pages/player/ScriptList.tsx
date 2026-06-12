@@ -26,8 +26,9 @@ import {
   CalendarOutlined
 } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { scriptApi, Script, ScriptCategory, ScriptDifficulty } from '../../api/scripts';
+import { scriptApi, Script, ScriptDifficulty, ScriptCategory } from '../../api/scripts';
 import { scheduleApi } from '../../api/schedules';
+import { useCategoryStore } from '../../store/useCategoryStore';
 
 const { Search } = Input;
 const { Option } = Select;
@@ -38,7 +39,7 @@ const ScriptList: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [scripts, setScripts] = useState<Script[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 12, total: 0 });
-  const [categories, setCategories] = useState<ScriptCategory[]>([]);
+  const { activeCategories: categories, fetchActiveCategories } = useCategoryStore();
   const [keyword, setKeyword] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>();
   const [difficultyFilter, setDifficultyFilter] = useState<string>();
@@ -55,21 +56,12 @@ const ScriptList: React.FC = () => {
   }, [location.state]);
 
   useEffect(() => {
-    fetchCategories();
+    fetchActiveCategories();
   }, []);
 
   useEffect(() => {
     fetchScripts();
   }, [pagination.current, pagination.pageSize, keyword, categoryFilter, difficultyFilter, playerCountFilter]);
-
-  const fetchCategories = async () => {
-    try {
-      const response = await scriptApi.getCategories();
-      setCategories(response.data);
-    } catch (error: any) {
-      message.error(error.message || '获取分类失败');
-    }
-  };
 
   const fetchScripts = async () => {
     setLoading(true);

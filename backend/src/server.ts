@@ -11,6 +11,7 @@ import bookingRoutes from './routes/bookings';
 import orderRoutes from './routes/orders';
 import drinkRoutes from './routes/drinks';
 import statisticsRoutes from './routes/statistics';
+import categoryRoutes from './routes/categories';
 
 initDatabase();
 
@@ -45,6 +46,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/drinks', drinkRoutes);
 app.use('/api/statistics', statisticsRoutes);
+app.use('/api/categories', categoryRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

@@ -28,13 +28,14 @@ import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { scriptApi, Script, ScriptCategory } from '../../api/scripts';
 import { scheduleApi, ScheduleWithDetails } from '../../api/schedules';
+import { useCategoryStore } from '../../store/useCategoryStore';
 
 const PlayerHome: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [recommendedScripts, setRecommendedScripts] = useState<Script[]>([]);
   const [hotSchedules, setHotSchedules] = useState<ScheduleWithDetails[]>([]);
-  const [categories, setCategories] = useState<ScriptCategory[]>([]);
+  const { activeCategories: categories, fetchActiveCategories } = useCategoryStore();
 
   useEffect(() => {
     fetchData();
@@ -43,14 +44,13 @@ const PlayerHome: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [scriptsRes, schedulesRes, categoriesRes] = await Promise.all([
+      const [scriptsRes, schedulesRes] = await Promise.all([
         scriptApi.getList({ status: 'published', pageSize: 8 }),
         scheduleApi.getAvailable({ pageSize: 6 }),
-        scriptApi.getCategories()
+        fetchActiveCategories()
       ]);
       setRecommendedScripts(scriptsRes.data.list);
       setHotSchedules(schedulesRes.data.list);
-      setCategories(categoriesRes.data);
     } catch (error: any) {
       message.error(error.message || '获取数据失败');
     } finally {

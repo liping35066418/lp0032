@@ -1,4 +1,7 @@
-import { request, PaginatedResponse, ApiResponse } from './client';
+import { request } from './client';
+import type { PaginatedResponse, ApiResponse } from './client';
+
+export type { PaginatedResponse, ApiResponse };
 import type {
   Script,
   Room,
@@ -7,6 +10,8 @@ import type {
   ScheduleWithDetails,
   Order,
   Drink,
+  Category,
+  CategoryWithCount,
   ScriptStatus,
   RoomStatus,
   UserRole,
@@ -292,4 +297,24 @@ export const drinksApi = {
 
   delete: (id: number) =>
     request.delete(`/drinks/${id}`)
+};
+
+export const categoriesApi = {
+  getAllCategories: (params?: { status?: 'active' | 'inactive' }) =>
+    request.get<CategoryWithCount[]>('/categories', { params }),
+
+  getActiveCategories: () =>
+    request.get<{ name: string; count: number }[]>('/categories/active'),
+
+  createCategory: (data: { name: string }) =>
+    request.post<Category>('/categories', data),
+
+  updateCategory: (id: number, data: { name: string }) =>
+    request.put<Category>(`/categories/${id}`, data),
+
+  updateCategoryStatus: (id: number, status: 'active' | 'inactive') =>
+    request.patch<{ status: 'active' | 'inactive' }>(`/categories/${id}/status`, { status }),
+
+  deleteCategory: (id: number) =>
+    request.delete(`/categories/${id}`)
 };

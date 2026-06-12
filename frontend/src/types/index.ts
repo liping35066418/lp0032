@@ -118,6 +118,19 @@ export interface Drink {
   created_at: string;
 }
 
+export interface Category {
+  id: number;
+  name: string;
+  status: 'active' | 'inactive';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CategoryWithCount extends Category {
+  script_count: number;
+  published_count: number;
+}
+
 export interface ScheduleWithDetails extends Schedule {
   script_name: string;
   script_category: string;
@@ -176,3 +189,11 @@ export const paymentMethodMap: Record<string, string> = {
   manual: '手动操作',
   auto: '系统自动'
 };
+
+export interface Category {
+  id: number;
+  name: string;
+  status: 'active' | 'inactive';
+  created_at: string;
+  updated_at: string;
+}
