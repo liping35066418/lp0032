@@ -16,7 +16,12 @@ import {
   Popconfirm,
   Avatar,
   List,
-  Descriptions
+  Descriptions,
+  Row,
+  Col,
+  Divider,
+  Empty,
+  Typography
 } from 'antd';
 import {
   PlayCircleOutlined,
@@ -28,16 +33,34 @@ import {
   UserOutlined,
   ClockCircleOutlined,
   TeamOutlined,
-  EnvironmentOutlined
+  EnvironmentOutlined,
+  CoffeeOutlined,
+  PlusOutlined,
+  MinusOutlined,
+  DeleteOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useAuthStore } from '../../store/useAuthStore';
-import { scheduleApi, ScheduleWithDetails, BookingWithPlayer } from '../../api/schedules';
+import { scheduleApi, ScheduleWithDetails, BookingWithPlayer, BookingDrinks } from '../../api/schedules';
 import { bookingApi } from '../../api/bookings';
+import { drinkApi, Drink } from '../../api/drinks';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 const { TextArea } = Input;
+
+const { Title, Text } = Typography;
+
+interface SelectedDrink {
+  drink_id: number;
+  drink_name: string;
+  price: number;
+  quantity: number;
+}
+
+interface BookingDrinkSelection {
+  [bookingId: number]: SelectedDrink[];
+}
 
 const HostSchedules: React.FC = () => {
   const { user } = useAuthStore();
@@ -48,6 +71,11 @@ const HostSchedules: React.FC = () => {
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [endModalVisible, setEndModalVisible] = useState(false);
+  const [drinkModalVisible, setDrinkModalVisible] = useState(false);
+  const [currentBookingId, setCurrentBookingId] = useState<number | null>(null);
+  const [drinks, setDrinks] = useState<Drink[]>([]);
+  const [drinkLoading, setDrinkLoading] = useState(false);
+  const [bookingDrinks, setBookingDrinks] = useState<BookingDrinkSelection>({});
   const [currentSchedule, setCurrentSchedule] = useState<ScheduleWithDetails | null>(null);
   const [endForm] = Form.useForm();
 
@@ -125,18 +153,142 @@ const HostSchedules: React.FC = () => {
     }
   };
 
-  const handleEndSchedule = (schedule: ScheduleWithDetails) => {
+  const handleEndSchedule = async (schedule: ScheduleWithDetails) => {
     setCurrentSchedule(schedule);
     endForm.resetFields();
+    setBookingDrinks({});
     setEndModalVisible(true);
+    await loadDrinks();
+  };
+
+  const loadDrinks = async () => {
+    setDrinkLoading(true);
+    try {
+      const response = await drinkApi.getList({ status: 'active', pageSize: 100 });
+      setDrinks(response.data.list);
+    } catch (error: any) {
+      message.error(error.message || '加载饮品列表失败');
+    } finally {
+      setDrinkLoading(false);
+    }
+  };
+
+  const handleAddDrink = (bookingId: number) => {
+    setCurrentBookingId(bookingId);
+    setDrinkModalVisible(true);
+  };
+
+  const handleSelectDrink = (drink: Drink) => {
+    if (!currentBookingId) return;
+    
+    if (drink.stock <= 0) {
+      message.warning('该饮品库存不足');
+      return;
+    }
+
+    setBookingDrinks(prev => {
+      const current = prev[currentBookingId!] || [];
+      const existing = current.find(d => d.drink_id === drink.id);
+      
+      if (existing) {
+        if (existing.quantity >= drink.stock) {
+          message.warning('已达库存上限');
+          return prev;
+        }
+        return {
+          ...prev,
+          [currentBookingId!]: current.map(d =>
+            d.drink_id === drink.id ? { ...d, quantity: d.quantity + 1 } : d
+          )
+        };
+      } else {
+        return {
+          ...prev,
+          [currentBookingId!]: [...current, {
+            drink_id: drink.id,
+            drink_name: drink.name,
+            price: drink.price,
+            quantity: 1
+          }]
+        };
+      }
+    });
+  };
+
+  const handleUpdateDrinkQuantity = (bookingId: number, drinkId: number, quantity: number) => {
+    const drink = drinks.find(d => d.id === drinkId);
+    if (drink && quantity > drink.stock) {
+      message.warning('超出库存数量');
+      return;
+    }
+
+    setBookingDrinks(prev => {
+      const current = prev[bookingId] || [];
+      if (quantity <= 0) {
+        return {
+          ...prev,
+          [bookingId]: current.filter(d => d.drink_id !== drinkId)
+        };
+      }
+      return {
+        ...prev,
+        [bookingId]: current.map(d =>
+          d.drink_id === drinkId ? { ...d, quantity } : d
+        )
+      };
+    });
+  };
+
+  const handleRemoveDrink = (bookingId: number, drinkId: number) => {
+    setBookingDrinks(prev => ({
+      ...prev,
+      [bookingId]: (prev[bookingId] || []).filter(d => d.drink_id !== drinkId)
+    }));
+  };
+
+  const getBookingDrinkTotal = (bookingId: number): number => {
+    const items = bookingDrinks[bookingId] || [];
+    return items.reduce((sum: number, item: SelectedDrink) => sum + item.price * item.quantity, 0);
+  };
+
+  const getTotalDrinkAmount = () => {
+    return Object.values(bookingDrinks).reduce((total: number, items: SelectedDrink[]) => {
+      return total + items.reduce((sum: number, item: SelectedDrink) => sum + item.price * item.quantity, 0);
+    }, 0);
+  };
+
+  const getCheckedInBookings = () => {
+    if (!currentSchedule?.bookings) return [];
+    return currentSchedule.bookings.filter(b => 
+      b.status === 'checked_in' || b.status === 'confirmed'
+    );
+  };
+
+  const buildBookingDrinksPayload = (): BookingDrinks[] => {
+    return Object.entries(bookingDrinks)
+      .filter(([_, items]) => items.length > 0)
+      .map(([bookingId, items]: [string, SelectedDrink[]]) => ({
+        booking_id: parseInt(bookingId),
+        drinks: items.map((item: SelectedDrink) => ({
+          drink_id: item.drink_id,
+          quantity: item.quantity
+        }))
+      }));
   };
 
   const handleConfirmEnd = async () => {
     try {
       const values = await endForm.validateFields();
-      await scheduleApi.end(currentSchedule!.id, values);
-      message.success('场次已结束');
+      const bookingDrinksPayload = buildBookingDrinksPayload();
+      
+      await scheduleApi.end(currentSchedule!.id, {
+        ...values,
+        booking_drinks: bookingDrinksPayload.length > 0 ? bookingDrinksPayload : undefined
+      });
+      
+      message.success('场次已结束，结算完成');
       setEndModalVisible(false);
+      setDrinkModalVisible(false);
       fetchSchedules();
     } catch (error: any) {
       message.error(error.message || '操作失败');
@@ -393,34 +545,244 @@ const HostSchedules: React.FC = () => {
       </Modal>
 
       <Modal
-        title="结束场次"
+        title="结束场次 & 结算"
         open={endModalVisible}
         onOk={handleConfirmEnd}
         onCancel={() => setEndModalVisible(false)}
-        okText="确认结束"
+        okText="确认结束并结算"
         cancelText="取消"
+        width={720}
+        okButtonProps={{ danger: true }}
       >
         <Form form={endForm} layout="vertical">
-          <Form.Item
-            name="actual_players"
-            label="实际到场人数"
-            rules={[{ required: true, message: '请输入实际到场人数' }]}
-          >
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            name="host_rating"
-            label="本场表现自评"
-          >
-            <Rate allowHalf />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="actual_players"
+                label="实际到场人数"
+                rules={[{ required: true, message: '请输入实际到场人数' }]}
+              >
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="host_rating"
+                label="本场表现自评"
+              >
+                <Rate allowHalf />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item
             name="host_comment"
             label="主持人备注"
           >
-            <TextArea rows={4} placeholder="记录本场次的情况、玩家反馈等" />
+            <TextArea rows={3} placeholder="记录本场次的情况、玩家反馈等" />
           </Form.Item>
         </Form>
+
+        <Divider style={{ margin: '12px 0' }} />
+
+        <div>
+          <Text strong style={{ fontSize: 15 }}>
+            <CoffeeOutlined style={{ marginRight: 8 }} />
+            饮品选购（按玩家）
+          </Text>
+          
+          {getCheckedInBookings().length === 0 ? (
+            <Empty description="暂无已核验玩家" style={{ padding: '20px 0' }} />
+          ) : (
+            <div style={{ marginTop: 12 }}>
+              {getCheckedInBookings().map(booking => (
+                <Card
+                  key={booking.id}
+                  size="small"
+                  style={{ marginBottom: 12 }}
+                  bodyStyle={{ padding: 12 }}
+                  extra={
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<PlusOutlined />}
+                      onClick={() => handleAddDrink(booking.id)}
+                    >
+                      添加饮品
+                    </Button>
+                  }
+                  title={
+                    <Space>
+                      <Avatar size="small" icon={<UserOutlined />} src={booking.player_avatar} />
+                      <span>{booking.player_name}</span>
+                      <Tag color="blue">{booking.player_count}人</Tag>
+                    </Space>
+                  }
+                >
+                  {bookingDrinks[booking.id] && bookingDrinks[booking.id].length > 0 ? (
+                    <div>
+                      {bookingDrinks[booking.id].map(item => (
+                        <Row key={item.drink_id} align="middle" style={{ marginBottom: 8 }}>
+                          <Col span={10}>
+                            <Text>{item.drink_name}</Text>
+                          </Col>
+                          <Col span={6} style={{ textAlign: 'center' }}>
+                            <Space size="small">
+                              <Button
+                                size="small"
+                                shape="circle"
+                                icon={<MinusOutlined />}
+                                onClick={() => handleUpdateDrinkQuantity(booking.id, item.drink_id, item.quantity - 1)}
+                              />
+                              <InputNumber
+                                size="small"
+                                min={1}
+                                value={item.quantity}
+                                style={{ width: 50, textAlign: 'center' }}
+                                onChange={(val) => handleUpdateDrinkQuantity(booking.id, item.drink_id, val || 1)}
+                              />
+                              <Button
+                                size="small"
+                                shape="circle"
+                                icon={<PlusOutlined />}
+                                onClick={() => handleUpdateDrinkQuantity(booking.id, item.drink_id, item.quantity + 1)}
+                              />
+                            </Space>
+                          </Col>
+                          <Col span={5} style={{ textAlign: 'right' }}>
+                            <Text strong>¥{item.price.toFixed(2)}</Text>
+                          </Col>
+                          <Col span={2} style={{ textAlign: 'right' }}>
+                            <Button
+                              type="text"
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => handleRemoveDrink(booking.id, item.drink_id)}
+                            />
+                          </Col>
+                        </Row>
+                      ))}
+                      <div style={{ textAlign: 'right', marginTop: 8, paddingTop: 8, borderTop: '1px dashed #f0f0f0' }}>
+                        <Text type="secondary">饮品小计: </Text>
+                        <Text strong style={{ color: '#f5222d' }}>¥{getBookingDrinkTotal(booking.id).toFixed(2)}</Text>
+                      </div>
+                    </div>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 12 }}>暂未选购饮品</Text>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Divider style={{ margin: '12px 0' }} />
+
+        <Card size="small" title="结算单" style={{ marginTop: 12 }}>
+          <List size="small">
+            {getCheckedInBookings().map(booking => {
+              const ticketTotal = (currentSchedule?.base_price || 0) * booking.player_count;
+              const drinkTotal = getBookingDrinkTotal(booking.id);
+              const hasDrinks = drinkTotal > 0;
+              
+              return (
+                <div key={booking.id} style={{ marginBottom: 12 }}>
+                  <div style={{ fontWeight: 500, marginBottom: 4 }}>{booking.player_name} ({booking.player_count}人)</div>
+                  <div style={{ paddingLeft: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666' }}>
+                      <span>剧本票费 × {booking.player_count}</span>
+                      <span>¥{ticketTotal.toFixed(2)}</span>
+                    </div>
+                    {hasDrinks && bookingDrinks[booking.id]?.map(item => (
+                      <div key={item.drink_id} style={{ display: 'flex', justifyContent: 'space-between', color: '#666' }}>
+                        <span>{item.drink_name} × {item.quantity}</span>
+                        <span>¥{(item.price * item.quantity).toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 500, marginTop: 4, paddingTop: 4, borderTop: '1px dashed #f0f0f0' }}>
+                      <span>小计</span>
+                      <span style={{ color: hasDrinks ? '#722ed1' : '#1890ff' }}>
+                        {hasDrinks ? '（合并结算）' : ''} ¥{(ticketTotal + drinkTotal).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </List>
+          
+          <Divider style={{ margin: '8px 0' }} />
+          
+          <div style={{ textAlign: 'right' }}>
+            <Text type="secondary">饮品总计: </Text>
+            <Text strong style={{ color: '#13c2c2' }}>¥{getTotalDrinkAmount().toFixed(2)}</Text>
+            <div style={{ marginTop: 8 }}>
+              <Text style={{ fontSize: 16 }}>应付总额: </Text>
+              <Text strong style={{ fontSize: 24, color: '#f5222d' }}>
+                ¥{
+                  (getCheckedInBookings().reduce((sum, b) => {
+                    return sum + (currentSchedule?.base_price || 0) * b.player_count;
+                  }, 0) + getTotalDrinkAmount()).toFixed(2)
+                }
+              </Text>
+            </div>
+          </div>
+        </Card>
+      </Modal>
+
+      <Modal
+        title="选择饮品"
+        open={drinkModalVisible}
+        onCancel={() => setDrinkModalVisible(false)}
+        footer={null}
+        width={640}
+      >
+        {drinkLoading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
+        ) : drinks.length === 0 ? (
+          <Empty description="暂无可用饮品" />
+        ) : (
+          <Row gutter={[12, 12]}>
+            {drinks.map(drink => (
+              <Col span={12} key={drink.id}>
+                <Card
+                  size="small"
+                  hoverable
+                  onClick={() => handleSelectDrink(drink)}
+                  style={{ 
+                    cursor: drink.stock > 0 ? 'pointer' : 'not-allowed',
+                    opacity: drink.stock > 0 ? 1 : 0.5
+                  }}
+                  bodyStyle={{ padding: 12 }}
+                >
+                  <Space>
+                    <div
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 8,
+                        background: '#f0f0f0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 24
+                      }}
+                    >
+                      <CoffeeOutlined />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>{drink.name}</div>
+                      <div style={{ color: '#f5222d', fontWeight: 'bold' }}>¥{drink.price.toFixed(2)}</div>
+                      <div style={{ fontSize: 12, color: drink.stock < 10 ? '#f5222d' : '#999' }}>
+                        库存: {drink.stock}
+                      </div>
+                    </div>
+                  </Space>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        )}
       </Modal>
     </div>
   );

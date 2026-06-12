@@ -76,10 +76,21 @@ export interface BookScheduleData {
   player_names?: string;
 }
 
+export interface BookingDrinkItem {
+  drink_id: number;
+  quantity: number;
+}
+
+export interface BookingDrinks {
+  booking_id: number;
+  drinks: BookingDrinkItem[];
+}
+
 export interface EndScheduleData {
   actual_players?: number;
   host_rating?: number;
   host_comment?: string;
+  booking_drinks?: BookingDrinks[];
 }
 
 export const scheduleApi = {

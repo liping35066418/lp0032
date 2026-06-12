@@ -405,7 +405,7 @@ router.post('/:id/start', authenticateToken, requireRole('admin', 'host'), (req,
 
 router.post('/:id/end', authenticateToken, requireRole('admin', 'host'), (req, res) => {
   const id = parseInt(req.params.id);
-  const { actual_players, host_rating, host_comment } = req.body;
+  const { actual_players, host_rating, host_comment, booking_drinks } = req.body;
   
   const schedule = db.prepare('SELECT * FROM schedules WHERE id = ?').get(id) as Schedule | undefined;
   if (!schedule) {
@@ -434,14 +434,85 @@ router.post('/:id/end', authenticateToken, requireRole('admin', 'host'), (req, r
     
     db.prepare("UPDATE bookings SET status = 'completed' WHERE schedule_id = ?").run(id);
     
+    if (booking_drinks && booking_drinks.length > 0) {
+      const drinkStockUpdates: Record<number, number> = {};
+      const drinkInfoCache: Record<number, any> = {};
+      
+      for (const bd of booking_drinks) {
+        const bookingId = parseInt(bd.booking_id);
+        const drinks = bd.drinks || [];
+        
+        if (drinks.length === 0) continue;
+        
+        const order = db.prepare(
+          "SELECT * FROM orders WHERE schedule_id = ? AND booking_id = ? AND type = 'ticket' AND status = 'pending'"
+        ).get(id, bookingId) as any;
+        
+        if (!order) continue;
+        
+        let drinkTotal = 0;
+        for (const d of drinks) {
+          const drinkId = parseInt(d.drink_id);
+          const qty = parseInt(d.quantity);
+          
+          if (qty <= 0) continue;
+          
+          if (!drinkInfoCache[drinkId]) {
+            const drink = db.prepare('SELECT * FROM drinks WHERE id = ? AND status = ?').get(drinkId, 'active') as any;
+            if (!drink) {
+              throw new Error(`饮品不存在或已下架: ${drinkId}`);
+            }
+            drinkInfoCache[drinkId] = drink;
+          }
+          
+          const drink = drinkInfoCache[drinkId];
+          const currentReserved = drinkStockUpdates[drinkId] || 0;
+          const remainingStock = drink.stock - currentReserved;
+          
+          if (remainingStock < qty) {
+            throw new Error(`饮品「${drink.name}」库存不足，剩余库存: ${remainingStock}`);
+          }
+          
+          drinkStockUpdates[drinkId] = currentReserved + qty;
+          
+          const subtotal = qty * drink.price;
+          drinkTotal += subtotal;
+          
+          db.prepare(`
+            INSERT INTO order_items (order_id, item_type, item_name, quantity, unit_price, subtotal, description)
+            VALUES (?, 'drink', ?, ?, ?, ?, ?)
+          `).run(order.id, drink.name, qty, drink.price, subtotal, drink.description || null);
+        }
+        
+        if (drinkTotal > 0) {
+          const newAmount = order.amount + drinkTotal;
+          db.prepare(`
+            UPDATE orders 
+            SET type = 'package', amount = ?, status = 'paid', paid_at = datetime('now'), payment_method = 'onsite'
+            WHERE id = ?
+          `).run(newAmount, order.id);
+        } else {
+          db.prepare(`
+            UPDATE orders 
+            SET status = 'paid', paid_at = datetime('now'), payment_method = 'onsite'
+            WHERE id = ?
+          `).run(order.id);
+        }
+      }
+      
+      for (const [drinkId, qty] of Object.entries(drinkStockUpdates)) {
+        db.prepare('UPDATE drinks SET stock = stock - ? WHERE id = ?').run(qty, parseInt(drinkId));
+      }
+    }
+    
     db.prepare("UPDATE orders SET status = 'paid', paid_at = datetime('now'), payment_method = 'onsite' WHERE schedule_id = ? AND status = 'pending'").run(id);
   });
   
   try {
     tx();
     success(res, null, '场次已结束');
-  } catch (err) {
-    error(res, '操作失败');
+  } catch (err: any) {
+    error(res, err.message || '操作失败');
   }
 });
 
